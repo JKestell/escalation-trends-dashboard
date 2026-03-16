@@ -329,6 +329,11 @@ function buildStackedArea(divId, seriesMap, totals, title) {
   const startDate = new Date(endDate);
   startDate.setMonth(startDate.getMonth() - 3);
   const defaultRange = [startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10)];
+  let initMaxY = 0;
+  for (let k = 0; k < totals.length; k++) {
+    const d = new Date(D.dates[k]);
+    if (d >= startDate && d <= endDate && totals[k] > initMaxY) initMaxY = totals[k];
+  }
 
   const layout = {
     title: { text: title, font: { size: 16, color: '#e1e4ed' }, x: 0.01, y: 0.98, yanchor: 'top' },
@@ -350,7 +355,7 @@ function buildStackedArea(divId, seriesMap, totals, title) {
         x: 0.01, y: 1.06,
       },
     },
-    yaxis: { gridcolor: '#2e3344', linecolor: '#2e3344', title: 'Overdue Issues' },
+    yaxis: { gridcolor: '#2e3344', linecolor: '#2e3344', title: 'Overdue Issues', range: [0, initMaxY * 1.08] },
     showlegend: false,
     hovermode: 'x',
     margin: { l: 50, r: 20, t: 70, b: 40 },

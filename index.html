@@ -189,6 +189,46 @@ const SQUAD_PALETTE = [
 
 function squadColor(i) { return SQUAD_PALETTE[i % SQUAD_PALETTE.length]; }
 
+// -- URL hash deep-linking --
+function getHashParams() {
+  const h = location.hash.slice(1);
+  if (!h) return {};
+  const params = {};
+  h.split('&').forEach(p => {
+    const [k, ...rest] = p.split('=');
+    if (k) params[decodeURIComponent(k)] = decodeURIComponent(rest.join('='));
+  });
+  return params;
+}
+function setHashParam(key, val) {
+  const params = getHashParams();
+  if (val === null || val === undefined || val === '') delete params[key];
+  else params[key] = val;
+  const hash = Object.entries(params).map(([k,v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+  history.replaceState(null, '', hash ? '#' + hash : location.pathname);
+}
+function getRangeForLabel(label) {
+  const end = new Date(D.dates[D.dates.length - 1]);
+  if (label === 'All') return [D.dates[0], D.dates[D.dates.length - 1]];
+  const months = { '1M': 1, '3M': 3, '6M': 6 }[label] || 3;
+  const start = new Date(end);
+  start.setMonth(start.getMonth() - months);
+  return [start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)];
+}
+function detectRangeLabel(r0, r1) {
+  const end = new Date(D.dates[D.dates.length - 1]);
+  const d0 = new Date(r0), d1 = new Date(r1);
+  const spanDays = (d1 - d0) / 86400000;
+  if (spanDays > 300) return 'All';
+  if (Math.abs(spanDays - 180) < 10) return '6M';
+  if (Math.abs(spanDays - 90) < 10) return '3M';
+  if (Math.abs(spanDays - 30) < 10) return '1M';
+  return null;
+}
+const _hp = getHashParams();
+const _hashRange = _hp.range || '3M';
+const _hashHide = _hp.hide ? _hp.hide.split(',') : [];
+
 // -- Business-day math (mirrors Python logic) --
 function businessDays(d1, d2) {
   if (d1 >= d2) return 0;
@@ -294,13 +334,19 @@ function showTicketModal(dateStr, squad, isTriage) {
 }
 
 // -- Tabs --
+function activateTab(name) {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
+  const el = document.querySelector('.tab[data-tab="' + name + '"]');
+  if (el) el.classList.add('active');
+  const content = document.getElementById('tab-' + name);
+  if (content) content.classList.add('active');
+  window.dispatchEvent(new Event('resize'));
+}
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
-    t.classList.add('active');
-    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
-    window.dispatchEvent(new Event('resize'));
+    activateTab(t.dataset.tab);
+    setHashParam('tab', t.dataset.tab);
   });
 });
 
@@ -325,14 +371,12 @@ function buildStackedArea(divId, seriesMap, totals, title) {
     hoverinfo: 'none',
   });
 
-  const endDate = new Date(D.dates[D.dates.length - 1]);
-  const startDate = new Date(endDate);
-  startDate.setMonth(startDate.getMonth() - 3);
-  const defaultRange = [startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10)];
+  const defaultRange = getRangeForLabel(_hashRange);
+  const rStart = new Date(defaultRange[0]), rEnd = new Date(defaultRange[1]);
   let initMaxY = 0;
   for (let k = 0; k < totals.length; k++) {
     const d = new Date(D.dates[k]);
-    if (d >= startDate && d <= endDate && totals[k] > initMaxY) initMaxY = totals[k];
+    if (d >= rStart && d <= rEnd && totals[k] > initMaxY) initMaxY = totals[k];
   }
 
   const layout = {
@@ -448,6 +492,12 @@ function buildStackedArea(divId, seriesMap, totals, title) {
         }
         if (totals[k] > maxY) maxY = totals[k];
       }
+      if (e['xaxis.autorange']) {
+        setHashParam('range', 'All');
+      } else if (x0 && x1) {
+        const label = detectRangeLabel(x0, x1);
+        if (label) setHashParam('range', label);
+      }
       Plotly.relayout(divId, { 'yaxis.range': [0, maxY * 1.08] }).then(() => { rescaling = false; });
     }
   });
@@ -457,12 +507,23 @@ function buildStackedArea(divId, seriesMap, totals, title) {
 function buildLegend(containerId, chartDivId, seriesMap) {
   const el = document.getElementById(containerId);
   const hidden = new Set();
+  _hashHide.forEach(name => {
+    const idx = D.squads.indexOf(name);
+    if (idx >= 0) hidden.add(idx);
+  });
   const items = [];
+
+  function syncHideHash() {
+    const names = [];
+    hidden.forEach(i => names.push(D.squads[i]));
+    setHashParam('hide', names.length ? names.join(',') : null);
+  }
 
   function applyVisibility() {
     const vis = D.squads.map((_, j) => !hidden.has(j));
     vis.push(true);
     items.forEach((item, j) => item.classList.toggle('hidden', hidden.has(j)));
+    syncHideHash();
     Plotly.restyle(chartDivId, { visible: vis }).then(() => {
       const chartEl = document.getElementById(chartDivId);
       const xa = chartEl.layout.xaxis;
@@ -499,6 +560,7 @@ function buildLegend(containerId, chartDivId, seriesMap) {
   D.squads.forEach((sq, i) => {
     const item = document.createElement('div');
     item.className = 'squad-legend-item';
+    if (hidden.has(i)) item.classList.add('hidden');
     item.innerHTML = '<div class="squad-legend-swatch" style="background:' + squadColor(i) + '"></div>' + sq;
     item.addEventListener('click', () => {
       if (hidden.has(i)) hidden.delete(i); else hidden.add(i);
@@ -508,6 +570,8 @@ function buildLegend(containerId, chartDivId, seriesMap) {
     items.push(item);
   });
   el.appendChild(row);
+
+  if (hidden.size > 0) applyVisibility();
 }
 
 // -- Movers --
@@ -608,6 +672,7 @@ buildLegend('fix-legend', 'fix-chart', D.fix);
 buildMovers('triage-movers', 'triage');
 buildMovers('fix-movers', 'fix');
 buildTrends();
+if (_hp.tab) activateTab(_hp.tab);
 </script>
 </body>
 </html>

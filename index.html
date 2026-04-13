@@ -201,7 +201,7 @@
     <div class="chart-container">
       <div id="rate-heatmap" style="height:520px;"></div>
     </div>
-    <div id="rate-drilldown" style="display:none; margin-top:16px;">
+    <div id="rate-drilldown" style="margin-top:16px;">
       <div class="chart-container" style="position:relative;">
         <button id="rate-drilldown-close" style="position:absolute;top:12px;right:12px;z-index:10;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text-dim);padding:4px 10px;cursor:pointer;font-size:12px;">Close</button>
         <div id="rate-drilldown-chart" style="height:320px;"></div>
@@ -766,6 +766,23 @@ function buildRateChart() {
     squadRates[sq] = rates;
   });
 
+  // Compute "All Squads" aggregate rate
+  var allRates = [];
+  weeks.forEach(function(w, wi) {
+    var sumOverdue = 0, sumActive = 0;
+    squads.forEach(function(sq) {
+      var triage = D.triage[sq] || [];
+      var active = D.triageActiveHistory[sq] || [];
+      for (var j = w[0]; j <= w[1]; j++) {
+        sumOverdue += (triage[j] || 0);
+        sumActive += (active[j] || 0);
+      }
+    });
+    var nDays = w[1] - w[0] + 1;
+    allRates.push(sumActive > 0 ? ((sumOverdue / nDays) / (sumActive / nDays) * 100) : null);
+  });
+  squadRates['All Squads'] = allRates;
+
   // Sort by average rate over last 4 weeks (most problematic at top)
   var recentStart = Math.max(0, weeks.length - 4);
   squads.sort(function(a, b) {
@@ -776,33 +793,59 @@ function buildRateChart() {
     return bAvg - aAvg;
   });
 
+  // Prepend "All Squads" row
+  squads.unshift('All Squads');
+
   // Build heatmap z-values and hover text
   var z = [];
   var hoverText = [];
   squads.forEach(function(sq) {
-    var triage = D.triage[sq] || [];
-    var active = D.triageActiveHistory[sq] || [];
     var row = [];
     var hRow = [];
-    weeks.forEach(function(w) {
-      var sumOverdue = 0, sumActive = 0;
-      for (var j = w[0]; j <= w[1]; j++) {
-        sumOverdue += (triage[j] || 0);
-        sumActive += (active[j] || 0);
-      }
-      var nDays = w[1] - w[0] + 1;
-      var avgOverdue = sumOverdue / nDays;
-      var avgActive = sumActive / nDays;
-      var rate = avgActive > 0 ? (avgOverdue / avgActive * 100) : null;
-      row.push(rate);
-      if (rate !== null) {
-        hRow.push('<b>' + sq + '</b><br>Week of ' + D.dates[w[0]] + '<br>' +
+    if (sq === 'All Squads') {
+      // Use pre-computed aggregate rates
+      weeks.forEach(function(w, wi) {
+        var sumOverdue = 0, sumActive = 0;
+        D.squads.forEach(function(s) {
+          var triage = D.triage[s] || [];
+          var active = D.triageActiveHistory[s] || [];
+          for (var j = w[0]; j <= w[1]; j++) {
+            sumOverdue += (triage[j] || 0);
+            sumActive += (active[j] || 0);
+          }
+        });
+        var nDays = w[1] - w[0] + 1;
+        var avgOverdue = sumOverdue / nDays;
+        var avgActive = sumActive / nDays;
+        var rate = avgActive > 0 ? (avgOverdue / avgActive * 100) : null;
+        row.push(rate);
+        hRow.push('<b>All Squads</b><br>Week of ' + D.dates[w[0]] + '<br>' +
           avgOverdue.toFixed(1) + ' avg overdue / ' + avgActive.toFixed(1) + ' avg active<br>' +
           '<b>' + rate.toFixed(1) + '% overdue rate</b>');
-      } else {
-        hRow.push('<b>' + sq + '</b><br>Week of ' + D.dates[w[0]] + '<br>No active tickets');
-      }
-    });
+      });
+    } else {
+      var triage = D.triage[sq] || [];
+      var active = D.triageActiveHistory[sq] || [];
+      weeks.forEach(function(w) {
+        var sumOverdue = 0, sumActive = 0;
+        for (var j = w[0]; j <= w[1]; j++) {
+          sumOverdue += (triage[j] || 0);
+          sumActive += (active[j] || 0);
+        }
+        var nDays = w[1] - w[0] + 1;
+        var avgOverdue = sumOverdue / nDays;
+        var avgActive = sumActive / nDays;
+        var rate = avgActive > 0 ? (avgOverdue / avgActive * 100) : null;
+        row.push(rate);
+        if (rate !== null) {
+          hRow.push('<b>' + sq + '</b><br>Week of ' + D.dates[w[0]] + '<br>' +
+            avgOverdue.toFixed(1) + ' avg overdue / ' + avgActive.toFixed(1) + ' avg active<br>' +
+            '<b>' + rate.toFixed(1) + '% overdue rate</b>');
+        } else {
+          hRow.push('<b>' + sq + '</b><br>Week of ' + D.dates[w[0]] + '<br>No active tickets');
+        }
+      });
+    }
     z.push(row);
     hoverText.push(hRow);
   });
@@ -866,12 +909,24 @@ function buildRateChart() {
   document.getElementById('rate-drilldown-close').addEventListener('click', function() {
     document.getElementById('rate-drilldown').style.display = 'none';
   });
+
+  showDrilldown('All Squads');
 }
 
 function showDrilldown(squad) {
   document.getElementById('rate-drilldown').style.display = 'block';
-  var triage = D.triage[squad] || [];
-  var active = D.triageActiveHistory[squad] || [];
+  var triage, active;
+  if (squad === 'All Squads') {
+    triage = D.dates.map(function(_, i) {
+      var sum = 0; D.squads.forEach(function(s) { sum += (D.triage[s] || [])[i] || 0; }); return sum;
+    });
+    active = D.dates.map(function(_, i) {
+      var sum = 0; D.squads.forEach(function(s) { sum += (D.triageActiveHistory[s] || [])[i] || 0; }); return sum;
+    });
+  } else {
+    triage = D.triage[squad] || [];
+    active = D.triageActiveHistory[squad] || [];
+  }
 
   // Weekly buckets
   var wkDates = [], wkActive = [], wkOverdue = [], wkRate = [];
@@ -914,20 +969,72 @@ function showDrilldown(squad) {
     yaxis: 'y2'
   };
 
+  var threeMonthsAgo = new Date(wkDates[wkDates.length - 1]);
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+  var defaultStart = threeMonthsAgo.toISOString().slice(0, 10);
+
+  var initMaxY1 = 0, initMaxY2 = 0;
+  for (var m = 0; m < wkDates.length; m++) {
+    if (wkDates[m] >= defaultStart) {
+      if (wkActive[m] > initMaxY1) initMaxY1 = wkActive[m];
+      if (wkOverdue[m] > initMaxY1) initMaxY1 = wkOverdue[m];
+      if (wkRate[m] > initMaxY2) initMaxY2 = wkRate[m];
+    }
+  }
+
   var layout = {
-    title: { text: squad + ' \u2014 Triage Volume & Overdue Rate', font: { color: '#e1e4ed', size: 14 }, x: 0 },
+    title: { text: squad + ' \u2014 Triage Volume & Overdue Rate', font: { color: '#e1e4ed', size: 14 }, x: 0.01, y: 0.98, yanchor: 'top' },
     paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-    margin: { l: 60, r: 60, t: 40, b: 50 },
+    margin: { l: 60, r: 60, t: 70, b: 50 },
     barmode: 'overlay',
-    xaxis: { tickfont: { color: '#8b90a0', size: 10 }, tickangle: -45, nticks: 25, gridcolor: '#2e3344' },
-    yaxis: { title: { text: 'Tickets', font: { color: '#8b90a0', size: 11 } }, tickfont: { color: '#8b90a0' }, gridcolor: '#2e3344', rangemode: 'tozero' },
-    yaxis2: { title: { text: 'Overdue Rate %', font: { color: '#e8a44a', size: 11 } }, tickfont: { color: '#e8a44a' }, overlaying: 'y', side: 'right', rangemode: 'tozero', ticksuffix: '%', gridcolor: 'rgba(0,0,0,0)' },
-    legend: { orientation: 'h', y: 1.12, x: 0.5, xanchor: 'center', font: { color: '#8b90a0', size: 11 } },
+    xaxis: {
+      tickfont: { color: '#8b90a0', size: 10 }, gridcolor: '#2e3344', linecolor: '#2e3344',
+      range: [defaultStart, wkDates[wkDates.length - 1]],
+      rangeselector: {
+        buttons: [
+          { count: 1, label: '1M', step: 'month', stepmode: 'backward' },
+          { count: 3, label: '3M', step: 'month', stepmode: 'backward' },
+          { count: 6, label: '6M', step: 'month', stepmode: 'backward' },
+          { step: 'all', label: 'All' }
+        ],
+        bgcolor: '#232734', activecolor: '#6c7ee1',
+        font: { color: '#e1e4ed', size: 11 },
+        x: 0.01, y: 1.08
+      }
+    },
+    yaxis: { title: { text: 'Tickets', font: { color: '#8b90a0', size: 11 } }, tickfont: { color: '#8b90a0' }, gridcolor: '#2e3344', range: [0, initMaxY1 * 1.1 || 1] },
+    yaxis2: { title: { text: 'Overdue Rate %', font: { color: '#e8a44a', size: 11 } }, tickfont: { color: '#e8a44a' }, overlaying: 'y', side: 'right', range: [0, initMaxY2 * 1.15 || 1], ticksuffix: '%', gridcolor: 'rgba(0,0,0,0)' },
+    legend: { orientation: 'h', y: 1.08, x: 0.5, xanchor: 'center', font: { color: '#8b90a0', size: 11 } },
     hoverlabel: { bgcolor: '#1a1d27', bordercolor: '#2e3344', font: { color: '#e1e4ed', size: 12 } }
   };
 
   Plotly.newPlot('rate-drilldown-chart', [barActive, barOverdue, lineRate], layout, { responsive: true, displayModeBar: false });
-  document.getElementById('rate-drilldown-chart').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  var ddEl = document.getElementById('rate-drilldown-chart');
+  ddEl.on('plotly_relayout', function(evt) {
+    var xMin = evt['xaxis.range[0]'] || (evt['xaxis.range'] && evt['xaxis.range'][0]);
+    var xMax = evt['xaxis.range[1]'] || (evt['xaxis.range'] && evt['xaxis.range'][1]);
+    if (!xMin || !xMax) {
+      if (evt['xaxis.autorange']) {
+        Plotly.relayout(ddEl, { 'yaxis.autorange': true, 'yaxis2.autorange': true });
+      }
+      return;
+    }
+    var maxY1 = 0, maxY2 = 0;
+    for (var k = 0; k < wkDates.length; k++) {
+      if (wkDates[k] >= xMin && wkDates[k] <= xMax) {
+        if (wkActive[k] > maxY1) maxY1 = wkActive[k];
+        if (wkOverdue[k] > maxY1) maxY1 = wkOverdue[k];
+        if (wkRate[k] > maxY2) maxY2 = wkRate[k];
+      }
+    }
+    Plotly.relayout(ddEl, {
+      'yaxis.range': [0, maxY1 * 1.1 || 1],
+      'yaxis2.range': [0, maxY2 * 1.15 || 1]
+    });
+  });
+
+  ddEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 buildStackedArea('triage-chart', D.triage, D.triageTotals, 'Overdue Triage Escalations by Squad');

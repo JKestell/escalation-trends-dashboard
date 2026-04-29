@@ -697,7 +697,8 @@ function buildTrends() {
     // Draw sparkline on canvas
     const canvas = document.getElementById('spark-' + key);
     const ctx = canvas.getContext('2d');
-    const data = t.sparkline;
+    const data = t.sparkline || [];
+    if (!data.length) return;
     const w = canvas.width, h = canvas.height;
     const max = Math.max(...data, 1);
     const step = w / (data.length - 1 || 1);

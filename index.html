@@ -1120,6 +1120,12 @@ function switchTriageSubtab(name) {
       line: { width: 0 },
       fillcolor: 'rgba(229,91,91,0.7)',
       hovertemplate: '%{x}<br>Severe: %{y}<extra></extra>'
+    },
+    {
+      x: dates, y: dates.map((_, i) => modSeries[i] + sevSeries[i]), name: 'Total',
+      type: 'scatter', mode: 'lines',
+      line: { color: '#ffffff', width: 1.5 },
+      hovertemplate: '%{x}<br>Total: %{y}<extra></extra>'
     }
   ];
 
@@ -1166,6 +1172,11 @@ function switchTriageSubtab(name) {
     annotations: [
       {
         x: '2026-02-20', y: 0.97, yref: 'paper', xref: 'x',
+        text: 'Totals accurate', showarrow: false,
+        font: { color: '#e1e4ed', size: 11 }
+      },
+      {
+        x: '2026-02-20', y: 0.93, yref: 'paper', xref: 'x',
         text: 'Split estimated', showarrow: false,
         font: { color: '#8b90a0', size: 11, style: 'italic' }
       },

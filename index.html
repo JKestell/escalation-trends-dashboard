@@ -1094,7 +1094,8 @@ function switchTriageSubtab(name) {
       type: 'scatter', mode: 'lines', stackgroup: 'proj',
       line: { width: 0 },
       fillcolor: 'rgba(108,180,238,0.2)',
-      hovertemplate: '%{x}<br>Moderate (est): %{y}<extra></extra>',
+      customdata: projDates.map((_, i) => projMod[i] + projSev[i]),
+      hovertemplate: '%{x}<br>Moderate (est): %{y}<br>Total (actual): %{customdata}<extra></extra>',
       showlegend: false
     },
     {
@@ -1102,7 +1103,8 @@ function switchTriageSubtab(name) {
       type: 'scatter', mode: 'lines', stackgroup: 'proj',
       line: { width: 0 },
       fillcolor: 'rgba(229,91,91,0.25)',
-      hovertemplate: '%{x}<br>Severe (est): %{y}<extra></extra>',
+      customdata: projDates.map((_, i) => projMod[i] + projSev[i]),
+      hovertemplate: '%{x}<br>Severe (est): %{y}<br>Total (actual): %{customdata}<extra></extra>',
       showlegend: false
     },
     {
